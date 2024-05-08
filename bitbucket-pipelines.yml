@@ -1,0 +1,210 @@
+---
+clone:
+  depth: full
+
+definitions:
+  services:
+    docker:
+      memory: 512
+    docker-with-more-memory:
+      memory: 2048
+      type: docker
+    docker-with-large-memory:
+      memory: 5120
+      type: docker
+  # The steps can share some file, like dependencies, among steps
+  caches:
+    gomod: ~/.cache/go-build
+    gopathmod: $GOPATH/pkg/mod
+  # The steps can share some file, like dependencies, among steps
+  # Here we are defining some common steps we will be re-using later
+  steps:
+    # You can add a name to the step with the '&' character
+    # and later, reuse it in other steps
+    - step: &unit-test
+        name: Run unit tests
+        # Here we are overriding the default image provided by Bitbucket
+        # and using our own image (public image stored in Docker Hub)
+        # NOTE: other container registries can be used, as GCR
+        image: golang:1.21.0
+        caches: &gomod-cache
+          - gomod
+          - gopathmod
+        script:
+          - &config-git git config --global --add url."git@bitbucket.org:".insteadOf "https://bitbucket.org/" &&
+            export GOPRIVATE="bitbucket.org/ayopop" &&
+            export GONOPROXY="bitbucket.org/ayopop" &&
+            export GONOSUMDB="bitbucket.org/ayopop"
+          - &install-dependencies go install ./...
+          - CGO_ENABLED=0 go test -short -coverprofile=./cov.out ./...
+        artifacts:
+          - cov.out
+
+    - step: &semantic-versioning
+        name: Semantic versioning
+        image:
+          name: asia.gcr.io/control-room-277910/semantic-versioning:1.1.2
+          username: _json_key
+          password: "$GCP_GCR_SERVICE_ACCOUNT"
+        script:
+          - export GIT_AUTHOR_NAME=ayopopDevops
+          - export GIT_AUTHOR_EMAIL=devops@ayopop.com
+          - export BB_TOKEN_BASIC_AUTH=${BITBUCKET_TOKEN_BASIC_AUTH}
+          - npx semantic-release
+          - ./check-release.sh
+        artifacts:
+          - semantic_version.txt
+
+    - step: &list-outdated-dependencies
+        name: List Golang outdated dependencies
+        image: golang:1.21.0
+        caches: &gomod-cache
+          - gomod
+          - gopathmod
+        script:
+          # https://github.com/psampaz/go-mod-outdated
+          - echo 'List Outdated Dependencies'
+          - *config-git
+          - go install github.com/psampaz/go-mod-outdated@v0.8.0
+          - go list -u -m -json all | go-mod-outdated -direct -update -ci
+
+    - step: &simple-static-code-analysis
+        name: Scan code with Sonarcloud
+        services: [docker-with-large-memory]
+        size: 2x
+        script:
+          - pipe: sonarsource/sonarcloud-scan:1.4.0
+            variables:
+              EXTRA_ARGS: -Dsonar.sources=. -Dsonar.exclusions=sql/*.sql,**/*_mock.go,**/*_test.go,**/*.pb.go,tests/** -Dsonar.tests=. -Dsonar.test.inclusions=**/*_test.go -Dsonar.go.coverage.reportPaths=./cov.out
+          - pipe: sonarsource/sonarcloud-quality-gate:0.1.6
+      condition:
+        changesets:
+          includePaths:
+            # replace this line with the path to the source code folder
+            - "*.go"
+            - "**/*.go"
+
+    - step: &static-code-analysis
+        name: Scan code with Sonarcloud
+        services: [docker-with-large-memory]
+        size: 2x
+        script:
+          - pipe: sonarsource/sonarcloud-scan:1.4.0
+            variables:
+              EXTRA_ARGS: -Dsonar.sources=. -Dsonar.exclusions=sql/*.sql,**/*_mock.go,**/*_test.go,**/*.pb.go,tests/** -Dsonar.tests=. -Dsonar.test.inclusions=**/*_test.go -Dsonar.projectVersion="$(cat ./semantic_version.txt)" -Dsonar.go.coverage.reportPaths=./cov.out
+          - pipe: sonarsource/sonarcloud-quality-gate:0.1.6
+      condition:
+        changesets:
+          includePaths:
+            # replace this line with the path to the source code folder
+            - "*.go"
+            - "**/*.go"
+
+    - step: &build-artifact
+        name: Build Golang artifact
+        image: golang:1.21.0
+        caches: &gomod-cache
+          - gomod
+          - gopathmod
+        script:
+          - *config-git
+          - *install-dependencies
+          - CGO_ENABLED=0 GOPRIVATE=bitbucket.org/ayopop GOOS=linux GOARCH=amd64 go build -a -installsuffix nocgo -o ./${SERVICE}
+        artifacts:
+          - of-bulk-disbursement
+
+    - step: &code-vulnerability-scanning
+        name: Source code vulnerability scanning (by Trivy)
+        image:
+          name: asia.gcr.io/control-room-277910/gcloud-trivy:1.1.4
+          username: _json_key
+          password: "$GCP_GCR_SERVICE_ACCOUNT"
+        script:
+          - trivy fs --exit-code 1 ./
+
+    - step: &config-vulnerability-scanning
+        name: Configuration vulnerability scanning (by Trivy)
+        image:
+          name: asia.gcr.io/control-room-277910/gcloud-trivy:1.1.4
+          username: _json_key
+          password: "$GCP_GCR_SERVICE_ACCOUNT"
+        script:
+          - trivy config --exit-code 1 ./
+
+pipelines:
+  pull-requests:
+    feature/*:
+      - step: *unit-test
+      - step: *simple-static-code-analysis
+
+  branches:
+    master:
+      - parallel:
+          - step: *unit-test
+          - step: *list-outdated-dependencies
+          - step: *code-vulnerability-scanning
+          - step: *config-vulnerability-scanning
+      - step: *semantic-versioning
+      # - parallel:
+      - step: *build-artifact
+          # - step: *static-code-analysis
+
+      - step:
+         name: Deployment to DEVELOPMENT
+         services: [docker-with-large-memory]
+         size: 2x
+         image:
+           name: asia.gcr.io/control-room-277910/gcloud-ansible:1.3.0
+           username: _json_key
+           password: "$GCP_GCR_SERVICE_ACCOUNT"
+         deployment: Develop
+         script:
+           - bash ./gcp_cloud_run_deployment.sh "-dev"
+
+      - step:
+         name: Deployment to STAGE
+         services: [docker-with-large-memory]
+         size: 2x
+         image:
+           name: asia.gcr.io/control-room-277910/gcloud-ansible:1.3.0
+           username: _json_key
+           password: "$GCP_GCR_SERVICE_ACCOUNT"
+         deployment: Stage
+         trigger: manual
+         script:
+           - bash ./gcp_cloud_run_deployment.sh "-stage"
+
+      - step:
+         name: Docker vulnerability scanning (by trivy)
+         image:
+           name: asia.gcr.io/control-room-277910/gcloud-trivy:1.1.4
+           username: _json_key
+           password: "$GCP_GCR_SERVICE_ACCOUNT"
+         script:
+           - bash ./trivy.sh
+
+      - step:
+          name: Deployment to SANDBOX
+          image:
+            name: asia.gcr.io/control-room-277910/gcloud-ansible:1.3.0
+            username: _json_key
+            password: "$GCP_GCR_SERVICE_ACCOUNT"
+          deployment: Sandbox
+          trigger: manual
+          services: [docker-with-large-memory]
+          size: 2x
+          script:
+            - bash ./gcp_cloud_run_deployment.sh "-sandbox"
+
+      - step:
+          name: Deployment to PRODUCTION
+          services: [docker-with-large-memory]
+          size: 2x
+          image:
+            name: asia.gcr.io/control-room-277910/gcloud-ansible:1.3.0
+            username: _json_key
+            password: "$GCP_GCR_SERVICE_ACCOUNT"
+          deployment: Production
+          trigger: manual
+          script:
+            - bash ./gcp_cloud_run_deployment.sh ""

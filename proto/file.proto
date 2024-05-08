@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+option go_package = "pb/file/";
+
+import "google/api/annotations.proto";
+import "common.proto";
+
+message UploadBulkFileRequest {
+  string transactionId = 1;
+  string correlationId = 2;
+  string merchantUserId = 3;
+  string merchantCode = 4;
+  string fileName = 5;
+  bytes fileContent = 6;
+  int64 fileSize  = 7;
+  string bulkName = 8;
+}
+
+message UploadBulkFileResponse {
+  string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  string referenceNumber = 5;
+  optional File file =7;
+  optional ErrorData errors = 6;
+
+}
+message ErrorData {
+  string code = 1;
+  string errorMessage = 2;
+  string details = 3;
+}
+message File {
+  string bulkId = 1;
+  string uploadAt = 2;
+  string fileName = 3;
+  int64 fileSize =4;
+  string merchantUserId = 5;
+  int32 status =6;
+}
+
+message UpdateBulkStatusRequest {
+  string transactionId = 1;
+  string bulkId = 2;
+  int32 status = 3;
+  optional string reason = 4;
+  optional string merchantUserId = 5;
+  optional string merchantCode = 6;
+}
+
+message UpdateBulkStatusResponse {
+   string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  string referenceNumber = 5;
+  string bulkId = 6;
+  int32 status = 7;
+}
+
+message BulkFilesRequest {
+  string transactionId = 1;
+  string merchantCode = 2;
+  optional string bulkDisbursementId = 3;
+  optional string bulkDisbursementName = 4;
+  optional string uploader = 5;
+  optional int32 status = 6;
+  int32 page = 8;
+  int32 limit = 9;
+  optional string startDate = 10;
+  optional string endDate = 11;
+}
+
+message BulkFilesResponse {
+  string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  string referenceNumber = 5;
+  repeated BulkFile bulkList = 6;
+  common.Pagination pagination = 7;
+}
+
+message BulkFile {
+  string createdDateTime = 1;
+  string bulkDisbursementId = 2;
+  string bulkDisbursementName = 3;
+  double totalAmount = 4;
+  string uploader = 5;
+  float status = 6;
+  BulkFileStatusCount statusCount = 7;
+  string reason = 8;
+  string updatedBy = 9;
+}
+
+message BulkFileStatusCount {
+  int32 vaildEntries      = 1;
+	int32 verifiedInquiries = 2;
+	int32 dibursedEntries   = 3;
+}
+
+
+service BulkFileHandler {
+  rpc UploadBulkFile(UploadBulkFileRequest) returns (UploadBulkFileResponse) {
+     option (google.api.http) = {
+            post: "/api/of-buk-disbursement/file"
+            body: "*"
+            additional_bindings {
+                post: "/api/v1/of-buk-disbursement/file"
+                body: "*"
+            }
+        };
+  };
+   rpc UpdateBulkFileStatus(UpdateBulkStatusRequest) returns (UpdateBulkStatusResponse) {
+     option (google.api.http) = {
+            patch: "/api/of-buk-disbursement/file"
+            body: "*"
+            additional_bindings {
+                patch: "/api/v1/of-buk-disbursement/file"
+                body: "*"
+            }
+        };
+  };
+  rpc BulkFiles(BulkFilesRequest) returns (BulkFilesResponse) {
+    option (google.api.http) = {
+           get: "/api/of-bulk-disbursement/bulk-files"
+           additional_bindings {
+               get: "/api/v1/of-bulk-disbursement/bulk-files"
+           }
+       };
+  };
+}

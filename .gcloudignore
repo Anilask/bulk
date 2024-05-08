@@ -1,0 +1,26 @@
+# The .gcloudignore file excludes file from upload to Cloud Build.
+# If this file is deleted, gcloud will default to .gitignore.
+#
+# https://cloud.google.com/cloud-build/docs/speeding-up-builds#gcloudignore
+# https://cloud.google.com/sdk/gcloud/reference/topic/gcloudignore
+
+# Exclude locally vendored dependencies.
+vendor/
+
+# Exclude git history and configuration.
+.git/
+.gitignore
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.sh
+# Test binary, build with `go test -c`
+*.test
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+# Documentation file
+*.md

@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+option go_package = "pb/disbursement/";
+
+import "google/api/annotations.proto";
+import "common.proto";
+
+message DisbursementRequest {
+  string transactionId = 1;
+  string correlationId = 2;
+  string merchantUserId = 3;
+  string merchantCode = 4;
+  string bulkDisbursementId = 5;
+}
+
+message DisbursementResponse {
+  string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  string referenceNumber = 5;
+  int32  status = 6;
+}
+
+message UpdateDisbursementRequest {
+  string transactionId = 1;
+  string referenceNumber = 2;
+  optional string customerId = 3;
+  optional string beneficiaryCorrelationId = 4;
+  optional string beneficiaryId = 5;
+  optional int32 beneficiaryStatus = 6;
+  optional string disbursementReferenceNumber = 7;
+  optional int32 disbursementStatus = 8;
+  optional int32 status = 9;
+  optional string failedReason = 10; 
+  optional int64 bulkId = 11;
+  optional int64 id = 12;
+  optional string beneficiaryName = 13;
+  optional string beneficiaryBankName = 14;
+  string type = 15;
+}
+
+message UpdateDisbursementResponse {
+  string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  string referenceNumber = 5;
+}
+
+message DownloadDisbursementDataRequest {
+  string transactionId = 1;
+  string merchantUserId = 2;
+  string merchantCode = 3;
+  string bulkDisbursementId = 4;
+  int32 status  = 5;
+}
+
+message DownloadDisbursementDataResponse {
+  string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  string referenceNumber = 5;
+  string merchantUserId = 6;
+  string merchantCode = 7;
+  string bulkDisbursementId = 8;
+  DownloadFile file = 9;
+}
+
+message DownloadFile {
+  string url = 1;
+}
+
+message DisbursementsRequest {
+  string transactionId = 1;
+  string bulkDisbursmentId = 2;
+  string merchantCode = 3;
+  optional int32 status = 4;
+  optional string beneficiaryId = 5;
+  optional string accountNumber = 6;
+  optional string beneficiaryBank = 7;
+  int32 page = 8;
+  int32 limit = 9;
+}
+
+message DisbursementsResponse {
+  string responseCode = 1;
+  string responseMessage = 2;
+  string responseTime = 3;
+  string transactionId = 4;
+  optional string bulkDisbursmentId = 5;
+  optional string bulkDisbursmentName = 6;
+  optional int64 bulkDisbursmentStatus = 7;
+  repeated Disbursement disbursementList = 8;
+  string referenceNumber = 9;
+  common.Pagination pagination = 10;
+  BulkDisbursementStatusCount bulkDisbursementStatusCount = 11;
+}
+
+message Pagination {
+  int32 page = 1;
+  int32 limit = 2;
+  int32 totalCount = 3;
+}
+
+message Disbursement {
+  string beneficiaryId = 1;
+  string accountNumber = 2;
+  string beneficiaryBank = 3;
+  string status = 4;
+  string amount = 5;
+  optional string statusFailedReason = 6;
+}
+
+message BulkDisbursementStatusCount {
+  int32 vaildEntries      = 1;
+	int32 verifiedInquiries = 2;
+	int32 disbursedEntries  = 3;
+}
+
+service BulkDisbursementHandler {
+  rpc Disburse(DisbursementRequest) returns (DisbursementResponse) {
+     option (google.api.http) = {
+            post: "/api/of-buk-disbursement/disburse"
+            body: "*"
+            additional_bindings {
+                post: "/api/v1/of-buk-disbursement/disburse"
+                body: "*"
+            }
+        };
+  };
+  rpc UpdateDisburseDetails(UpdateDisbursementRequest) returns (UpdateDisbursementResponse) {
+     option (google.api.http) = {
+            patch: "/api/of-buk-disbursement/disburse"
+            body: "*"
+            additional_bindings {
+                patch: "/api/v1/of-buk-disbursement/disburse"
+                body: "*"
+            }
+        };
+   }; 
+   rpc DownloadDisburse(DownloadDisbursementDataRequest) returns (DownloadDisbursementDataResponse) {
+     option (google.api.http) = {
+            post: "/api/of-buk-disbursement/disburse/download"
+            body: "*"
+            additional_bindings {
+                post: "/api/v1/of-buk-disbursement/disburse/download"
+                body: "*"
+            }
+        };
+   }; 
+   rpc Disbursements(DisbursementsRequest) returns (DisbursementsResponse) {
+    option (google.api.http) = {
+           get: "/api/of-bulk-disbursement/disbursements"
+           additional_bindings {
+               get: "/api/v1/of-bulk-disbursement/disbursements"
+           }
+       };
+  };
+}

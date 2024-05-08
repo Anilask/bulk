@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "bitbucket.org/ayopop/of-bulk-disbursement/pb/common";
+
+message Pagination {
+    int32 page = 1;
+    int32 limit = 2;
+    int32 totalCount = 3;
+  }
